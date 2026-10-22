@@ -1,0 +1,167 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice Lamp</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #101218;
+      color: white;
+      text-align: center;
+      padding: 30px 16px;
+      margin: 0;
+    }
+    main {
+      max-width: 420px;
+      margin: 30px auto;
+      padding: 24px;
+      background: #20232c;
+      border-radius: 20px;
+    }
+    input, button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      border-radius: 10px;
+      font-size: 16px;
+    }
+    input {
+      background: #fff;
+      color: #111;
+      border: 1px solid #aaa;
+    }
+    button {
+      border: 0;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .on { background: #52d273; color: #102016; }
+    .off { background: #ff7777; color: #280909; }
+    .voice { background: #8b83ff; color: #fff; }
+    #status { min-height: 48px; line-height: 1.5; }
+    small { color: #c5c8d4; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>🎙️ Voice Lamp</h1>
+  <p>Control your lamp with your voice.</p>
+
+  <input id="bridge" type="url"
+    placeholder="Secure bridge URL (added later)">
+  <input id="password" type="password"
+    placeholder="Private lamp password">
+
+  <button class="voice" id="listen">🎙️ Start listening</button>
+  <button class="on" onclick="sendCommand('ON')">Turn lamp ON</button>
+  <button class="off" onclick="sendCommand('OFF')">Turn lamp OFF</button>
+
+  <p id="status">Enter the connection details to begin.</p>
+  <small>Say “turn on the lamp” or “turn off the lamp”.</small>
+</main>
+
+<script>
+const statusBox = document.getElementById("status");
+const listenButton = document.getElementById("listen");
+
+async function sendCommand(command) {
+  const base = document.getElementById("bridge").value
+    .trim().replace(/\/+$/, "");
+  const password = document.getElementById("password").value;
+
+  if (!base || !password) {
+    statusBox.textContent =
+      "Enter the bridge URL and password first.";
+    return;
+  }
+
+  statusBox.textContent = "Sending " + command + "...";
+
+  try {
+    const response = await fetch(base + "/command", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Lamp-Password": password
+      },
+      body: JSON.stringify({ command })
+    });
+
+    statusBox.textContent = response.ok
+      ? await response.text()
+      : "Command failed (HTTP " + response.status + ").";
+  } catch (error) {
+    statusBox.textContent =
+      "Could not connect. Check the bridge URL and connection.";
+  }
+}
+
+const SpeechRecognition =
+  window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (!SpeechRecognition) {
+  statusBox.textContent =
+    "Voice recognition is not supported in this browser. Try another supported browser.";
+  listenButton.disabled = true;
+} else {
+  const recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  let listening = false;
+
+  listenButton.onclick = () => {
+    if (listening) {
+      listening = false;
+      recognition.stop();
+      listenButton.textContent = "🎙️ Start listening";
+      statusBox.textContent = "Listening stopped.";
+      return;
+    }
+
+    listening = true;
+    try {
+      recognition.start();
+      listenButton.textContent = "⏹ Stop listening";
+      statusBox.textContent = "Listening... say a command.";
+    } catch (error) {
+      listening = false;
+      statusBox.textContent = "Tap Start listening to try again.";
+    }
+  };
+
+  recognition.onresult = event => {
+    const result =
+      event.results[event.results.length - 1][0].transcript.toLowerCase();
+
+    statusBox.textContent = "Heard: " + result;
+
+    if (/\b(turn|switch|lamp|light)\b/.test(result) &&
+        /\b(on|off)\b/.test(result)) {
+      if (/\b(off)\b/.test(result)) {
+        sendCommand("OFF");
+      } else {
+        sendCommand("ON");
+      }
+    }
+  };
+
+  recognition.onerror = event => {
+    statusBox.textContent = "Microphone: " + event.error;
+  };
+
+  recognition.onend = () => {
+    if (listening) {
+      listening = false;
+      listenButton.textContent = "🎙️ Start listening";
+      statusBox.textContent += " Tap Start listening to resume.";
+    }
+  };
+}
+</script>
+</body>
+</html>
